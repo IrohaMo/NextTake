@@ -4,8 +4,8 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 
 ## 仕様ドキュメント
 
-- `NextTake/TECH_SPEC.md`
-- `NextTake/IMPLEMENTATION_TASKS.md`
+- `/Users/shu/Developer/NextTake/TECH_SPEC.md`
+- `/Users/shu/Developer/NextTake/IMPLEMENTATION_TASKS.md`
 
 ## 実装方針
 
@@ -21,3 +21,4 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 - `TECH_SPEC.md` にMVP要件を記載。
 - 実装可能な粒度にタスク分解し、`IMPLEMENTATION_TASKS.md` を作成。
 - AI基盤を Gemini 前提へ変更（キー名・タスク名・依存表記を更新）。
+- `chore/init-nuxt` を実施し、Nuxt 3 の初期ファイル群を作成。
