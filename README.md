@@ -11,6 +11,7 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 
 - フレームワーク: Nuxt 3 + TypeScript
 - API: `POST /api/summarize`
+- モデル基盤: Gemini API（`GEMINI_API_KEY`）
 - 出力: 固定JSONスキーマ（`key_points`, `so_what`, `next_actions`, `open_questions`）
 
 ## 実装Log
@@ -19,3 +20,4 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 
 - `TECH_SPEC.md` にMVP要件を記載。
 - 実装可能な粒度にタスク分解し、`IMPLEMENTATION_TASKS.md` を作成。
+- AI基盤を Gemini 前提へ変更（キー名・タスク名・依存表記を更新）。

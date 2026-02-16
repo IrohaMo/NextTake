@@ -2,14 +2,9 @@
 
 `/Users/shu/Developer/NextTake/TECH_SPEC.md` を元に、MVPを実装可能なタスクへ分解。
 
-## 0. 前提と未確定事項
+## 0. 前提
 
-- `TECH_SPEC.md` が途中で終了しているため、以下はMVP成立に必要な最小前提で策定。
-- 未確定事項:
-  - 利用モデル（OpenAI APIのどのモデルを使うか）
-  - ログイン要否（MVPでは不要前提）
-  - 永続化要否（MVPでは履歴保存なし前提）
-  - 多言語対応（MVPでは日本語出力優先）
+  - 利用モデル Gemini flash1.5?
 - 出力JSONは下記を契約仕様（APIレスポンス）として固定:
   - `key_points: string[]`
   - `so_what: string`
@@ -21,7 +16,7 @@
 1. プロジェクト初期化
 - Nuxt 3 + TypeScript で新規作成
 - Lint/Format（ESLint + Prettier）設定
-- `.env.example` に `OPENAI_API_KEY` 追加
+- `.env.example` に `GEMINI_API_KEY` 追加
 
 2. ディレクトリ設計
 - `pages/` 画面
@@ -33,7 +28,7 @@
 
 3. 依存導入
 - `zod`（入出力バリデーション）
-- `openai`（APIクライアント）
+- `@google/genai`（Gemini APIクライアント）
 - 必要に応じて `youtube-transcript` 系パッケージ（失敗時フォールバック前提）
 
 ## 2. 機能実装タスク（Backend）
@@ -140,8 +135,8 @@ URL/テキスト入力フォーム、文字数カウンタ、ローディング�
 4. `feat/result-ui`  
 JSON整形表示、セクション表示、エラーハンドリング実装
 
-5. `feat/openai-pipeline`  
-OpenAI呼び出し、JSON強制、パース/検証/リトライ実装
+5. `feat/gemini-pipeline`  
+Gemini呼び出し、JSON強制、パース/検証/リトライ実装
 
 6. `feat/source-extraction`  
 YouTube判定・字幕取得、記事URL判定と本文取得フォールバック実装
