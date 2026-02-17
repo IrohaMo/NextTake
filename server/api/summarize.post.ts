@@ -84,6 +84,7 @@ Required schema:
 
 Rules:
 - Return JSON only. No markdown, no commentary.
+- All string values must be written in Japanese.
 - "next_actions" must be easy-to-start order.
 - "eta_min" should be practical small integers (example: 5, 15, 30).
 - If source information is insufficient, keep output structure and put missing points in "open_questions".
@@ -94,17 +95,26 @@ ${source}
 }
 
 export default defineEventHandler(async (event) => {
+  const requestId = `sum_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const startedAt = Date.now()
   const body = await readBody<SummarizeRequest>(event)
   const url = typeof body?.url === 'string' ? body.url.trim() : undefined
   const pastedText = typeof body?.pasted_text === 'string'
     ? body.pasted_text.slice(0, MAX_INPUT_CHARS)
     : undefined
 
+  console.info(`[summarize][${requestId}] start`, {
+    hasUrl: Boolean(url),
+    pastedTextChars: pastedText?.length ?? 0,
+  })
+
   if (!url && !pastedText) {
+    console.warn(`[summarize][${requestId}] invalid input: missing url/pasted_text`)
     return errorResponse(event, 400, 'INVALID_INPUT', 'Either "url" or "pasted_text" is required.')
   }
 
   if (url && !isHttpUrl(url)) {
+    console.warn(`[summarize][${requestId}] invalid url format`)
     return errorResponse(event, 400, 'INVALID_URL', 'URL must be http/https format.')
   }
 
@@ -113,9 +123,11 @@ export default defineEventHandler(async (event) => {
   const model = runtimeConfig.geminiModel as string | undefined
 
   if (!apiKey) {
+    console.error(`[summarize][${requestId}] missing GEMINI_API_KEY`)
     return errorResponse(event, 500, 'CONFIG_ERROR', 'Missing GEMINI_API_KEY.')
   }
   if (!model) {
+    console.error(`[summarize][${requestId}] missing geminiModel`)
     return errorResponse(event, 500, 'CONFIG_ERROR', 'Missing geminiModel in runtime config.')
   }
 
@@ -128,6 +140,7 @@ export default defineEventHandler(async (event) => {
 
     const rawText = String(result.text || '').trim()
     if (!rawText) {
+      console.error(`[summarize][${requestId}] empty model response`)
       return errorResponse(event, 502, 'EMPTY_MODEL_RESPONSE', 'Model returned an empty response.')
     }
 
@@ -136,22 +149,27 @@ export default defineEventHandler(async (event) => {
       parsed = JSON.parse(stripCodeFence(rawText))
     }
     catch {
+      console.error(`[summarize][${requestId}] invalid model json`)
       return errorResponse(event, 502, 'INVALID_MODEL_JSON', 'Model response was not valid JSON.')
     }
 
     if (!isValidSummarizeResponse(parsed)) {
+      console.error(`[summarize][${requestId}] invalid model schema`)
       return errorResponse(event, 502, 'INVALID_MODEL_SCHEMA', 'Model response did not match expected schema.')
     }
 
+    console.info(`[summarize][${requestId}] success in ${Date.now() - startedAt}ms`)
     return parsed
   }
   catch (error: unknown) {
     const maybeError = error as { status?: number, message?: string }
 
     if (maybeError?.status === 429) {
+      console.warn(`[summarize][${requestId}] quota exceeded in ${Date.now() - startedAt}ms`)
       return errorResponse(event, 429, 'QUOTA_EXCEEDED', 'Gemini quota exceeded. Please check plan/billing and retry.')
     }
 
+    console.error(`[summarize][${requestId}] failed in ${Date.now() - startedAt}ms`, maybeError?.message)
     return errorResponse(
       event,
       500,

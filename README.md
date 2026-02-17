@@ -25,3 +25,6 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 - `chore/init-nuxt` を実施し、Nuxt 3 の初期ファイル群を作成。
 - `POST /api/summarize` を実装（入力検証、Gemini呼び出し、JSONスキーマ検証、429/500エラーハンドリング）。
 - `.env.example` を使わない運用に合わせ、モデル定義を `nuxt.config.ts` に固定。
+- 最小UIを実装（URL入力、`/api/summarize` 呼び出し、要約結果とRaw JSON表示）。
+- API/フロントにログを追加し、待機中UIが確実に表示されるようフォーム送信処理を修正。
+- 使用モデルを `gemini-2.5-flash-lite` に戻した。
