@@ -14,6 +14,7 @@ type SummarizeResponse = {
 }
 
 const MAX_INPUT_CHARS = 12_000
+const FETCH_TIMEOUT_MS = 15_000
 
 function errorResponse(event: H3Event, status: number, code: string, message: string) {
   setResponseStatus(event, status)
@@ -32,6 +33,104 @@ function isHttpUrl(value: string): boolean {
 
 function stripCodeFence(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, '\'')
+}
+
+function cleanText(text: string): string {
+  return decodeHtmlEntities(text).replace(/\s+/g, ' ').trim()
+}
+
+function extractTitleFromHtml(html: string): string {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  return m ? cleanText(m[1]) : ''
+}
+
+function extractMainTextFromHtml(html: string): string {
+  const noScript = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+
+  const bodyMatch = noScript.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+  const bodyHtml = bodyMatch ? bodyMatch[1] : noScript
+  const textOnly = bodyHtml.replace(/<[^>]+>/g, ' ')
+  return cleanText(textOnly)
+}
+
+async function resolveSourceText(input: {
+  requestId: string
+  url?: string
+  pastedText?: string
+}): Promise<{ sourceText: string, sourceLabel: string }> {
+  if (input.pastedText) {
+    return {
+      sourceText: input.pastedText,
+      sourceLabel: 'pasted_text',
+    }
+  }
+
+  if (!input.url) {
+    return {
+      sourceText: '',
+      sourceLabel: 'none',
+    }
+  }
+
+  try {
+    const response = await fetch(input.url, {
+      headers: {
+        'user-agent': 'NextTakeBot/0.1 (+https://nexttake.local)',
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+
+    if (!response.ok) {
+      console.warn(`[summarize][${input.requestId}] source fetch failed with status ${response.status}`)
+      return {
+        sourceText: `URL: ${input.url}`,
+        sourceLabel: 'url_only',
+      }
+    }
+
+    const html = await response.text()
+    const title = extractTitleFromHtml(html)
+    const body = extractMainTextFromHtml(html)
+    const merged = cleanText(`${title ? `Title: ${title}\n` : ''}${body}`).slice(0, MAX_INPUT_CHARS)
+
+    if (!merged) {
+      console.warn(`[summarize][${input.requestId}] source extraction empty`)
+      return {
+        sourceText: `URL: ${input.url}`,
+        sourceLabel: 'url_only',
+      }
+    }
+
+    return {
+      sourceText: merged,
+      sourceLabel: 'fetched_article',
+    }
+  }
+  catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'unknown'
+    console.warn(`[summarize][${input.requestId}] source fetch error: ${msg}`)
+    return {
+      sourceText: `URL: ${input.url}`,
+      sourceLabel: 'url_only',
+    }
+  }
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -62,15 +161,14 @@ function isValidSummarizeResponse(value: unknown): value is SummarizeResponse {
 }
 
 function buildPrompt(input: { url?: string, pastedText?: string }) {
-  const source = input.pastedText
-    ? `Pasted text:\n${input.pastedText}`
-    : `URL: ${input.url}`
+  const source = input.pastedText || ''
+  const sourceInfo = input.url ? `Source URL: ${input.url}` : 'Source URL: (none)'
 
   return `
-You are an assistant that must return ONLY valid JSON.
-Summarize the source into the schema below.
+You must return ONLY valid JSON.
+No markdown. No explanation. Only JSON.
 
-Required schema:
+Schema:
 {
   "key_points": string[],
   "so_what": string,
@@ -82,14 +180,20 @@ Required schema:
   "open_questions": string[]
 }
 
-Rules:
-- Return JSON only. No markdown, no commentary.
-- All string values must be written in Japanese.
-- "next_actions" must be easy-to-start order.
-- "eta_min" should be practical small integers (example: 5, 15, 30).
-- If source information is insufficient, keep output structure and put missing points in "open_questions".
+Strict rules:
+- All strings must be written in Japanese.
+- key_points must include article-specific claims. Do not write general AI commentary.
+- Do NOT use abstract filler words such as:
+  「必要性」「課題」「複雑化」「動向」「重要」「影響」「議論」
+- so_what must describe why THIS article matters to the reader's real-world action.
+- next_actions must be concrete and executable within 30 minutes each.
+- next_actions must start with a specific verb.
+- Prohibited verbs: 「調査する」「検討する」「把握する」「考察する」「学習する」
+- If article lacks clarity, use open_questions instead of guessing.
+- Do not invent facts that are not explicitly present in the source text.
 
 Source:
+${sourceInfo}
 ${source}
 `.trim()
 }
@@ -132,10 +236,19 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    const { sourceText, sourceLabel } = await resolveSourceText({ requestId, url, pastedText })
+    console.info(`[summarize][${requestId}] source resolved`, {
+      sourceLabel,
+      sourceChars: sourceText.length,
+    })
+
     const ai = new GoogleGenAI({ apiKey })
     const result = await ai.models.generateContent({
       model,
-      contents: buildPrompt({ url, pastedText }),
+      contents: buildPrompt({ url, pastedText: sourceText }),
+	  config: {
+		temperature: 0.2,
+	  }
     })
 
     const rawText = String(result.text || '').trim()
