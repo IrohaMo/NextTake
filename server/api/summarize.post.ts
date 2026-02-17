@@ -49,6 +49,179 @@ function cleanText(text: string): string {
   return decodeHtmlEntities(text).replace(/\s+/g, ' ').trim()
 }
 
+function isYouTubeUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    const host = url.hostname.toLowerCase()
+    return host.includes('youtube.com') || host.includes('youtu.be')
+  }
+  catch {
+    return false
+  }
+}
+
+function getYouTubeVideoId(value: string): string | null {
+  try {
+    const url = new URL(value)
+    const host = url.hostname.toLowerCase()
+
+    if (host.includes('youtu.be')) {
+      const id = url.pathname.split('/').filter(Boolean)[0]
+      return id || null
+    }
+
+    if (host.includes('youtube.com')) {
+      const v = url.searchParams.get('v')
+      if (v)
+        return v
+
+      const parts = url.pathname.split('/').filter(Boolean)
+      if (parts[0] === 'shorts' && parts[1])
+        return parts[1]
+      if (parts[0] === 'embed' && parts[1])
+        return parts[1]
+    }
+
+    return null
+  }
+  catch {
+    return null
+  }
+}
+
+function extractJsonObjectAfterMarker(text: string, marker: string): string | null {
+  const markerIndex = text.indexOf(marker)
+  if (markerIndex === -1)
+    return null
+
+  const start = text.indexOf('{', markerIndex)
+  if (start === -1)
+    return null
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      }
+      else if (ch === '\\') {
+        escaped = true
+      }
+      else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+
+    if (ch === '{')
+      depth++
+    else if (ch === '}')
+      depth--
+
+    if (depth === 0) {
+      return text.slice(start, i + 1)
+    }
+  }
+
+  return null
+}
+
+function extractTranscriptFromJson3(raw: unknown): string {
+  if (!raw || typeof raw !== 'object')
+    return ''
+
+  const root = raw as { events?: Array<{ segs?: Array<{ utf8?: string }> }> }
+  const chunks: string[] = []
+
+  for (const event of root.events || []) {
+    for (const seg of event.segs || []) {
+      if (typeof seg.utf8 === 'string')
+        chunks.push(seg.utf8)
+    }
+  }
+
+  return cleanText(chunks.join(' '))
+}
+
+function extractTranscriptFromXml(xml: string): string {
+  const matches = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi)]
+  const chunks = matches.map(m => cleanText(m[1]))
+  return cleanText(chunks.join(' '))
+}
+
+async function fetchYouTubeTranscript(videoId: string): Promise<string> {
+  const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
+  const watchRes = await fetch(watchUrl, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 (NextTakeBot)',
+      'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!watchRes.ok)
+    return ''
+
+  const html = await watchRes.text()
+  const playerJsonText = extractJsonObjectAfterMarker(html, 'ytInitialPlayerResponse =')
+    || extractJsonObjectAfterMarker(html, 'var ytInitialPlayerResponse =')
+  if (!playerJsonText)
+    return ''
+
+  let player: any
+  try {
+    player = JSON.parse(playerJsonText)
+  }
+  catch {
+    return ''
+  }
+
+  const tracks = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks as Array<{
+    baseUrl?: string
+    languageCode?: string
+    kind?: string
+  }> | undefined
+  if (!tracks?.length)
+    return ''
+
+  const selectedTrack = tracks.find(t => (t.languageCode || '').startsWith('ja'))
+    || tracks.find(t => (t.languageCode || '').startsWith('en'))
+    || tracks.find(t => t.kind === 'asr')
+    || tracks[0]
+  if (!selectedTrack?.baseUrl)
+    return ''
+
+  const json3Url = selectedTrack.baseUrl.includes('fmt=')
+    ? selectedTrack.baseUrl
+    : `${selectedTrack.baseUrl}&fmt=json3`
+  const transcriptRes = await fetch(json3Url, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 (NextTakeBot)',
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!transcriptRes.ok)
+    return ''
+
+  const contentType = transcriptRes.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    const json = await transcriptRes.json()
+    return extractTranscriptFromJson3(json)
+  }
+
+  const xml = await transcriptRes.text()
+  return extractTranscriptFromXml(xml)
+}
+
 function extractTitleFromHtml(html: string): string {
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   return m ? cleanText(m[1]) : ''
@@ -74,7 +247,11 @@ async function resolveSourceText(input: {
   requestId: string
   url?: string
   pastedText?: string
-}): Promise<{ sourceText: string, sourceLabel: string }> {
+}): Promise<{
+  sourceText: string
+  sourceLabel: string
+  sourceError?: { status: number, code: string, message: string }
+}> {
   if (input.pastedText) {
     return {
       sourceText: input.pastedText,
@@ -86,6 +263,41 @@ async function resolveSourceText(input: {
     return {
       sourceText: '',
       sourceLabel: 'none',
+    }
+  }
+
+  if (isYouTubeUrl(input.url)) {
+    const videoId = getYouTubeVideoId(input.url)
+    if (!videoId) {
+      console.warn(`[summarize][${input.requestId}] youtube url detected but video id not found`)
+      return {
+        sourceText: '',
+        sourceLabel: 'youtube_transcript_error',
+        sourceError: {
+          status: 422,
+          code: 'YOUTUBE_VIDEO_ID_NOT_FOUND',
+          message: 'YouTube URL から動画IDを取得できませんでした。',
+        },
+      }
+    }
+
+    const transcript = await fetchYouTubeTranscript(videoId)
+    if (transcript) {
+      return {
+        sourceText: transcript.slice(0, MAX_INPUT_CHARS),
+        sourceLabel: 'youtube_transcript',
+      }
+    }
+
+    console.warn(`[summarize][${input.requestId}] youtube transcript unavailable`)
+    return {
+      sourceText: '',
+      sourceLabel: 'youtube_transcript_error',
+      sourceError: {
+        status: 422,
+        code: 'YOUTUBE_TRANSCRIPT_UNAVAILABLE',
+        message: 'この動画は字幕を取得できないため要約できませんでした。',
+      },
     }
   }
 
@@ -182,7 +394,7 @@ Schema:
 
 Strict rules:
 - All strings must be written in Japanese.
-- key_points must include article-specific claims. Do not write general AI commentary.
+- key_points must include source-specific claims. Do not write general AI commentary.
 - Do NOT use abstract filler words such as:
   「必要性」「課題」「複雑化」「動向」「重要」「影響」「議論」
 - so_what must describe why THIS article matters to the reader's real-world action.
@@ -236,11 +448,15 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const { sourceText, sourceLabel } = await resolveSourceText({ requestId, url, pastedText })
+    const { sourceText, sourceLabel, sourceError } = await resolveSourceText({ requestId, url, pastedText })
     console.info(`[summarize][${requestId}] source resolved`, {
       sourceLabel,
       sourceChars: sourceText.length,
     })
+    if (sourceError) {
+      console.warn(`[summarize][${requestId}] source error`, sourceError.code)
+      return errorResponse(event, sourceError.status, sourceError.code, sourceError.message)
+    }
 
     const ai = new GoogleGenAI({ apiKey })
     const result = await ai.models.generateContent({

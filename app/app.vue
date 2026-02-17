@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <h1>NextTake</h1>
-    <p class="caption">URLを入力して要約JSONを取得</p>
+    <p class="caption">記事 or YouTube URLを入力して要約JSONを取得</p>
 
     <form class="panel" novalidate @submit.prevent="submit">
       <label for="url">URL</label>
