@@ -27,7 +27,7 @@ NextTake は、記事URLまたはYouTube URLを入力すると内容を要約し
 
 ## 公開URL
 
-未公開（ローカル運用）
+https://next-take.vercel.app
 
 ## 仕様ドキュメント
 
