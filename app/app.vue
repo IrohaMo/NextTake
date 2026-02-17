@@ -3,23 +3,13 @@
     <h1>NextTake</h1>
     <p class="caption">記事 or YouTube URLを入力して要約JSONを取得</p>
 
-    <form class="panel" novalidate @submit.prevent="submit">
-      <label for="url">URL</label>
-      <input
-        id="url"
-        v-model="url"
-        type="text"
-        placeholder="https://example.com/article"
-      >
-
-      <p v-if="urlMessage" class="hint" :class="{ invalid: !urlValid }">
-        {{ urlMessage }}
-      </p>
-
-      <button type="submit" :disabled="pending">
-        {{ pending ? '生成中...' : '要約する' }}
-      </button>
-    </form>
+    <SummarizeInputPanel
+      v-model="url"
+      :pending="pending"
+      :url-message="urlMessage"
+      :url-valid="urlValid"
+      @submit="submit"
+    />
 
     <p v-if="statusMessage" class="status">
       {{ statusMessage }}
@@ -38,42 +28,7 @@
       再試行
     </button>
 
-    <section v-if="result" class="panel">
-      <p v-if="result.source_info" class="caption source-meta">
-        source: {{ result.source_info.source_type }}
-        <span v-if="result.source_info.transcript_type"> / transcript: {{ result.source_info.transcript_type }}</span>
-        <span v-if="result.source_info.language_code"> / lang: {{ result.source_info.language_code }}</span>
-      </p>
-
-      <h2>要点</h2>
-      <ul>
-        <li v-for="(point, idx) in result.key_points" :key="`k-${idx}`">
-          {{ point }}
-        </li>
-      </ul>
-
-      <h2>So what</h2>
-      <p>{{ result.so_what }}</p>
-
-      <h2>次アクション</h2>
-      <ul>
-        <li v-for="(action, idx) in result.next_actions" :key="`a-${idx}`">
-          {{ action }}
-        </li>
-      </ul>
-
-      <h2>Open Questions</h2>
-      <ul>
-        <li v-for="(q, idx) in result.open_questions" :key="`q-${idx}`">
-          {{ q }}
-        </li>
-      </ul>
-    </section>
-
-    <section v-if="result" class="panel">
-      <h2>Raw JSON</h2>
-      <pre>{{ JSON.stringify(result, null, 2) }}</pre>
-    </section>
+    <SummarizeResultPanel v-if="result" :result="result" />
   </div>
 </template>
 
@@ -215,45 +170,6 @@ async function retryLastRequest() {
   color: #555;
 }
 
-.source-meta {
-  margin-top: 0;
-}
-
-.panel {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 16px;
-  margin-top: 16px;
-}
-
-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-input {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-}
-
-button {
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 6px;
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .error {
   margin-top: 12px;
   color: #c62828;
@@ -262,17 +178,6 @@ button:disabled {
 .status {
   margin-top: 12px;
   color: #333;
-}
-
-.hint {
-  margin-top: -4px;
-  margin-bottom: 12px;
-  color: #2f5b2f;
-  font-size: 13px;
-}
-
-.hint.invalid {
-  color: #c62828;
 }
 
 .retry-btn {
@@ -288,13 +193,5 @@ button:disabled {
 .retry-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-pre {
-  background: #f6f6f6;
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 12px;
 }
 </style>
