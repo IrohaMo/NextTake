@@ -11,43 +11,15 @@ type SummarizeResponse = {
   so_what: string
   next_actions: Array<{ text: string; eta_min: number }>
   open_questions: string[]
+  source_info?: {
+    source_type: 'youtube' | 'article' | 'pasted_text' | 'unknown'
+    transcript_type?: 'auto' | 'manual' | 'none'
+    language_code?: string
+  }
 }
 
 const MAX_INPUT_CHARS = 12_000
 const FETCH_TIMEOUT_MS = 15_000
-
-function errorResponse(event: H3Event, status: number, code: string, message: string) {
-  setResponseStatus(event, status)
-  return { error: { code, message } }
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  }
-  catch {
-    return false
-  }
-}
-
-function stripCodeFence(text: string): string {
-  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
-}
-
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, '\'')
-}
-
-function cleanText(text: string): string {
-  return decodeHtmlEntities(text).replace(/\s+/g, ' ').trim()
-}
 
 function isYouTubeUrl(value: string): boolean {
   try {
@@ -89,137 +61,37 @@ function getYouTubeVideoId(value: string): string | null {
   }
 }
 
-function extractJsonObjectAfterMarker(text: string, marker: string): string | null {
-  const markerIndex = text.indexOf(marker)
-  if (markerIndex === -1)
-    return null
-
-  const start = text.indexOf('{', markerIndex)
-  if (start === -1)
-    return null
-
-  let depth = 0
-  let inString = false
-  let escaped = false
-
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i]
-
-    if (inString) {
-      if (escaped) {
-        escaped = false
-      }
-      else if (ch === '\\') {
-        escaped = true
-      }
-      else if (ch === '"') {
-        inString = false
-      }
-      continue
-    }
-
-    if (ch === '"') {
-      inString = true
-      continue
-    }
-
-    if (ch === '{')
-      depth++
-    else if (ch === '}')
-      depth--
-
-    if (depth === 0) {
-      return text.slice(start, i + 1)
-    }
-  }
-
-  return null
+function errorResponse(event: H3Event, status: number, code: string, message: string) {
+  setResponseStatus(event, status)
+  return { error: { code, message } }
 }
 
-function extractTranscriptFromJson3(raw: unknown): string {
-  if (!raw || typeof raw !== 'object')
-    return ''
-
-  const root = raw as { events?: Array<{ segs?: Array<{ utf8?: string }> }> }
-  const chunks: string[] = []
-
-  for (const event of root.events || []) {
-    for (const seg of event.segs || []) {
-      if (typeof seg.utf8 === 'string')
-        chunks.push(seg.utf8)
-    }
-  }
-
-  return cleanText(chunks.join(' '))
-}
-
-function extractTranscriptFromXml(xml: string): string {
-  const matches = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi)]
-  const chunks = matches.map(m => cleanText(m[1]))
-  return cleanText(chunks.join(' '))
-}
-
-async function fetchYouTubeTranscript(videoId: string): Promise<string> {
-  const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-  const watchRes = await fetch(watchUrl, {
-    headers: {
-      'user-agent': 'Mozilla/5.0 (NextTakeBot)',
-      'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!watchRes.ok)
-    return ''
-
-  const html = await watchRes.text()
-  const playerJsonText = extractJsonObjectAfterMarker(html, 'ytInitialPlayerResponse =')
-    || extractJsonObjectAfterMarker(html, 'var ytInitialPlayerResponse =')
-  if (!playerJsonText)
-    return ''
-
-  let player: any
+function isHttpUrl(value: string): boolean {
   try {
-    player = JSON.parse(playerJsonText)
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
   }
   catch {
-    return ''
+    return false
   }
+}
 
-  const tracks = player?.captions?.playerCaptionsTracklistRenderer?.captionTracks as Array<{
-    baseUrl?: string
-    languageCode?: string
-    kind?: string
-  }> | undefined
-  if (!tracks?.length)
-    return ''
+function stripCodeFence(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+}
 
-  const selectedTrack = tracks.find(t => (t.languageCode || '').startsWith('ja'))
-    || tracks.find(t => (t.languageCode || '').startsWith('en'))
-    || tracks.find(t => t.kind === 'asr')
-    || tracks[0]
-  if (!selectedTrack?.baseUrl)
-    return ''
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, '\'')
+}
 
-  const json3Url = selectedTrack.baseUrl.includes('fmt=')
-    ? selectedTrack.baseUrl
-    : `${selectedTrack.baseUrl}&fmt=json3`
-  const transcriptRes = await fetch(json3Url, {
-    headers: {
-      'user-agent': 'Mozilla/5.0 (NextTakeBot)',
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!transcriptRes.ok)
-    return ''
-
-  const contentType = transcriptRes.headers.get('content-type') || ''
-  if (contentType.includes('application/json')) {
-    const json = await transcriptRes.json()
-    return extractTranscriptFromJson3(json)
-  }
-
-  const xml = await transcriptRes.text()
-  return extractTranscriptFromXml(xml)
+function cleanText(text: string): string {
+  return decodeHtmlEntities(text).replace(/\s+/g, ' ').trim()
 }
 
 function extractTitleFromHtml(html: string): string {
@@ -250,12 +122,17 @@ async function resolveSourceText(input: {
 }): Promise<{
   sourceText: string
   sourceLabel: string
+  sourceInfo: NonNullable<SummarizeResponse['source_info']>
   sourceError?: { status: number, code: string, message: string }
 }> {
   if (input.pastedText) {
     return {
       sourceText: input.pastedText,
       sourceLabel: 'pasted_text',
+      sourceInfo: {
+        source_type: 'pasted_text',
+        transcript_type: 'none',
+      },
     }
   }
 
@@ -263,6 +140,10 @@ async function resolveSourceText(input: {
     return {
       sourceText: '',
       sourceLabel: 'none',
+      sourceInfo: {
+        source_type: 'unknown',
+        transcript_type: 'none',
+      },
     }
   }
 
@@ -273,6 +154,10 @@ async function resolveSourceText(input: {
       return {
         sourceText: '',
         sourceLabel: 'youtube_transcript_error',
+        sourceInfo: {
+          source_type: 'youtube',
+          transcript_type: 'none',
+        },
         sourceError: {
           status: 422,
           code: 'YOUTUBE_VIDEO_ID_NOT_FOUND',
@@ -280,23 +165,12 @@ async function resolveSourceText(input: {
         },
       }
     }
-
-    const transcript = await fetchYouTubeTranscript(videoId)
-    if (transcript) {
-      return {
-        sourceText: transcript.slice(0, MAX_INPUT_CHARS),
-        sourceLabel: 'youtube_transcript',
-      }
-    }
-
-    console.warn(`[summarize][${input.requestId}] youtube transcript unavailable`)
     return {
       sourceText: '',
-      sourceLabel: 'youtube_transcript_error',
-      sourceError: {
-        status: 422,
-        code: 'YOUTUBE_TRANSCRIPT_UNAVAILABLE',
-        message: 'この動画は字幕を取得できないため要約できませんでした。',
+      sourceLabel: 'youtube_file_uri',
+      sourceInfo: {
+        source_type: 'youtube',
+        transcript_type: 'none',
       },
     }
   }
@@ -314,6 +188,10 @@ async function resolveSourceText(input: {
       return {
         sourceText: `URL: ${input.url}`,
         sourceLabel: 'url_only',
+        sourceInfo: {
+          source_type: 'article',
+          transcript_type: 'none',
+        },
       }
     }
 
@@ -327,12 +205,20 @@ async function resolveSourceText(input: {
       return {
         sourceText: `URL: ${input.url}`,
         sourceLabel: 'url_only',
+        sourceInfo: {
+          source_type: 'article',
+          transcript_type: 'none',
+        },
       }
     }
 
     return {
       sourceText: merged,
       sourceLabel: 'fetched_article',
+      sourceInfo: {
+        source_type: 'article',
+        transcript_type: 'none',
+      },
     }
   }
   catch (error: unknown) {
@@ -341,6 +227,10 @@ async function resolveSourceText(input: {
     return {
       sourceText: `URL: ${input.url}`,
       sourceLabel: 'url_only',
+      sourceInfo: {
+        source_type: 'article',
+        transcript_type: 'none',
+      },
     }
   }
 }
@@ -410,6 +300,37 @@ ${source}
 `.trim()
 }
 
+function buildYouTubePrompt(url: string): string {
+  return `
+You must return ONLY valid JSON.
+No markdown. No explanation. Only JSON.
+
+Schema:
+{
+  "key_points": string[],
+  "so_what": string,
+  "next_actions": [
+    { "text": string, "eta_min": number },
+    { "text": string, "eta_min": number },
+    { "text": string, "eta_min": number }
+  ],
+  "open_questions": string[]
+}
+
+Strict rules:
+- All strings must be written in Japanese.
+- Summarize the provided YouTube video itself (not external assumptions).
+- key_points must include video-specific claims.
+- so_what must explain why this video matters for real-world action.
+- next_actions must be concrete and executable within 30 minutes each.
+- next_actions must start with a specific verb.
+- If information is uncertain, include it in open_questions instead of guessing.
+
+YouTube URL:
+${url}
+`.trim()
+}
+
 export default defineEventHandler(async (event) => {
   const requestId = `sum_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   const startedAt = Date.now()
@@ -428,10 +349,14 @@ export default defineEventHandler(async (event) => {
     console.warn(`[summarize][${requestId}] invalid input: missing url/pasted_text`)
     return errorResponse(event, 400, 'INVALID_INPUT', 'Either "url" or "pasted_text" is required.')
   }
+  console.info(`[summarize][${requestId}] input validation passed`)
 
   if (url && !isHttpUrl(url)) {
     console.warn(`[summarize][${requestId}] invalid url format`)
     return errorResponse(event, 400, 'INVALID_URL', 'URL must be http/https format.')
+  }
+  if (url) {
+    console.info(`[summarize][${requestId}] url format check passed`)
   }
 
   const runtimeConfig = useRuntimeConfig(event)
@@ -448,10 +373,12 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const { sourceText, sourceLabel, sourceError } = await resolveSourceText({ requestId, url, pastedText })
+    console.info(`[summarize][${requestId}] resolving source text`)
+    const { sourceText, sourceLabel, sourceInfo, sourceError } = await resolveSourceText({ requestId, url, pastedText })
     console.info(`[summarize][${requestId}] source resolved`, {
       sourceLabel,
       sourceChars: sourceText.length,
+      sourceInfo,
     })
     if (sourceError) {
       console.warn(`[summarize][${requestId}] source error`, sourceError.code)
@@ -459,13 +386,28 @@ export default defineEventHandler(async (event) => {
     }
 
     const ai = new GoogleGenAI({ apiKey })
+    const isYoutubeInput = Boolean(url && isYouTubeUrl(url) && !pastedText)
+    console.info(`[summarize][${requestId}] calling gemini`, { model, isYoutubeInput })
+    const contents: any = isYoutubeInput
+      ? [
+          {
+            fileData: {
+              fileUri: url,
+              mimeType: 'video/*',
+            },
+          },
+          { text: buildYouTubePrompt(url!) },
+        ]
+      : buildPrompt({ url, pastedText: sourceText })
+
     const result = await ai.models.generateContent({
       model,
-      contents: buildPrompt({ url, pastedText: sourceText }),
+      contents,
 	  config: {
 		temperature: 0.2,
 	  }
     })
+    console.info(`[summarize][${requestId}] gemini response received`)
 
     const rawText = String(result.text || '').trim()
     if (!rawText) {
@@ -475,6 +417,7 @@ export default defineEventHandler(async (event) => {
 
     let parsed: unknown
     try {
+      console.info(`[summarize][${requestId}] parsing model json`)
       parsed = JSON.parse(stripCodeFence(rawText))
     }
     catch {
@@ -482,13 +425,17 @@ export default defineEventHandler(async (event) => {
       return errorResponse(event, 502, 'INVALID_MODEL_JSON', 'Model response was not valid JSON.')
     }
 
+    console.info(`[summarize][${requestId}] validating response schema`)
     if (!isValidSummarizeResponse(parsed)) {
       console.error(`[summarize][${requestId}] invalid model schema`)
       return errorResponse(event, 502, 'INVALID_MODEL_SCHEMA', 'Model response did not match expected schema.')
     }
 
     console.info(`[summarize][${requestId}] success in ${Date.now() - startedAt}ms`)
-    return parsed
+    return {
+      ...parsed,
+      source_info: sourceInfo,
+    }
   }
   catch (error: unknown) {
     const maybeError = error as { status?: number, message?: string }

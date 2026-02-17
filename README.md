@@ -31,3 +31,19 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 - 要約精度改善として、URL先のHTML本文抽出を追加（本文手動入力UIは廃止）。
 - YouTube URLの場合は字幕取得を試行し、取得した字幕テキストを要約入力に使用するように拡張。
 - YouTube字幕を取得できない場合はフォールバックせず、明示エラー（422）を返す挙動に変更。
+- APIレスポンスに `source_info` を追加し、YouTubeでは `transcript_type`（`auto`/`manual`/`none`）を明示。
+- （後で廃止）字幕取得単体の検証用に `GET /api/youtube-transcript?url=...` を追加。
+- YouTube字幕取得を自前パースから `youtube-transcript-api` 利用へ切り替え（共通ユーティリティ化）。
+- （後で廃止）UIに「字幕取得テスト」ボタンを追加し、字幕取得結果プレビューを表示可能にした。
+- UI/APIの処理ステップごとに逐次 `console` ログを出力するよう強化。
+- `youtube-transcript-api` 呼び出しの候補メソッド別に詳細ログ（失敗理由含む）を追加。
+- `youtube-transcript-api` の実装仕様に合わせ、`TranscriptClient` + `client.getTranscript(videoId)` 呼び出しへ修正。
+- `client not fully initialized!` 対策として、初期化待機の吸収と `getTranscript` リトライを追加。
+- `youtube-transcript-api` が失敗した場合に watchページ解析へ自動フォールバックする処理を追加。
+- watchページフォールバック時に複数トラック・複数字幕フォーマットを順次試すよう強化。
+- 字幕URLが相対パスの場合に `https://www.youtube.com` へ正規化して取得するよう修正。
+- フォールバック取得で `CONSENT` Cookie と追加ヘッダを付与し、同意ページ返却の回避を試行。
+- `api/timedtext` の署名/IP系パラメータを除去したクリーンURLでも再試行するよう改善。
+- Python連携は廃止し、Node-only（watchページ経由）で字幕取得する構成に戻した。
+- `POST /api/summarize` は YouTube URL時に Gemini Video Understanding（`fileData.fileUri`）を使う方式へ切り替え。
+- 不要になった字幕テストUIと `GET /api/youtube-transcript` エンドポイントを削除。

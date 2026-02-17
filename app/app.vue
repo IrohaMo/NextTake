@@ -17,11 +17,21 @@
       </button>
     </form>
 
+    <p v-if="statusMessage" class="status">
+      {{ statusMessage }}
+    </p>
+
     <p v-if="errorMessage" class="error">
       {{ errorMessage }}
     </p>
 
     <section v-if="result" class="panel">
+      <p v-if="result.source_info" class="caption source-meta">
+        source: {{ result.source_info.source_type }}
+        <span v-if="result.source_info.transcript_type"> / transcript: {{ result.source_info.transcript_type }}</span>
+        <span v-if="result.source_info.language_code"> / lang: {{ result.source_info.language_code }}</span>
+      </p>
+
       <h2>要点</h2>
       <ul>
         <li v-for="(point, idx) in result.key_points" :key="`k-${idx}`">
@@ -60,42 +70,70 @@ type SummarizeResponse = {
   so_what: string
   next_actions: Array<{ text: string, eta_min: number }>
   open_questions: string[]
+  source_info?: {
+    source_type: 'youtube' | 'article' | 'pasted_text' | 'unknown'
+    transcript_type?: 'auto' | 'manual' | 'none'
+    language_code?: string
+  }
 }
 
 const url = ref('')
 const pending = ref(false)
 const errorMessage = ref('')
+const statusMessage = ref('')
 const result = ref<SummarizeResponse | null>(null)
 
+function uiLog(step: string, payload?: unknown) {
+  const ts = new Date().toISOString()
+  if (payload === undefined) {
+    console.info(`[ui][${ts}] ${step}`)
+    return
+  }
+  console.info(`[ui][${ts}] ${step}`, payload)
+}
+
 async function submit() {
+  uiLog('submit clicked')
   const trimmedUrl = url.value.trim()
+  uiLog('url validated', { hasUrl: Boolean(trimmedUrl), urlLength: trimmedUrl.length })
   if (!trimmedUrl) {
+    statusMessage.value = ''
     errorMessage.value = 'URLを入力してください。'
+    uiLog('submit blocked: empty url')
     return
   }
 
   pending.value = true
+  statusMessage.value = 'リクエスト送信中...'
   errorMessage.value = ''
   result.value = null
-  console.info('[ui] summarize request started')
+  uiLog('summarize request started')
   await nextTick()
+  uiLog('ui state updated: pending=true')
 
   try {
+    uiLog('calling /api/summarize')
     const res = await $fetch<SummarizeResponse>('/api/summarize', {
       method: 'POST',
       body: { url: trimmedUrl },
     })
     result.value = res
-    console.info('[ui] summarize request succeeded')
+    statusMessage.value = '要約を取得しました。'
+    uiLog('summarize request succeeded', {
+      keyPoints: res.key_points?.length || 0,
+      nextActions: res.next_actions?.length || 0,
+      transcriptType: res.source_info?.transcript_type || 'none',
+    })
   }
   catch (error: any) {
     const msg = error?.data?.error?.message || (error instanceof Error ? error.message : '通信エラーが発生しました。')
     errorMessage.value = msg
-    console.error('[ui] summarize request failed', msg)
+    statusMessage.value = '要約の取得に失敗しました。'
+    console.error('[ui] summarize request failed', msg, error)
   }
   finally {
     pending.value = false
-    console.info('[ui] summarize request finished')
+    uiLog('summarize request finished')
   }
 }
 </script>
@@ -111,6 +149,10 @@ async function submit() {
 .caption {
   margin-top: -8px;
   color: #555;
+}
+
+.source-meta {
+  margin-top: 0;
 }
 
 .panel {
@@ -151,6 +193,11 @@ button:disabled {
 .error {
   margin-top: 12px;
   color: #c62828;
+}
+
+.status {
+  margin-top: 12px;
+  color: #333;
 }
 
 pre {
