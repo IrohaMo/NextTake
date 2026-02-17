@@ -31,14 +31,13 @@ https://next-take.vercel.app
 
 ## 仕様ドキュメント
 
-- `/Users/shu/Developer/NextTake/TECH_SPEC.md`
-- `/Users/shu/Developer/NextTake/IMPLEMENTATION_TASKS.md`
+- `TECH_SPEC.md`
+- `IMPLEMENTATION_TASKS.md`
 
 ## 実装方針
 
 - フレームワーク: Nuxt 3 + TypeScript
 - API: `POST /api/summarize`
 - モデル基盤: Gemini API（`GEMINI_API_KEY`）
-- 使用モデル: `gemini-2.5-flash`（`/Users/shu/Developer/NextTake/nuxt.config.ts` の `runtimeConfig.geminiModel` に固定）
+- 使用モデル: `gemini-2.5-flash`（`nuxt.config.ts` の `runtimeConfig.geminiModel` に固定）
 - 出力: 固定JSONスキーマ（`key_points`, `so_what`, `next_actions`, `open_questions`）
-
