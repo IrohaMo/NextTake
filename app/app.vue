@@ -33,6 +33,9 @@
 </template>
 
 <script setup lang="ts">
+import SummarizeInputPanel from '../components/SummarizeInputPanel.vue'
+import SummarizeResultPanel from '../components/SummarizeResultPanel.vue'
+
 type SummarizeResponse = {
   key_points: string[]
   so_what: string
@@ -52,6 +55,18 @@ const statusMessage = ref('')
 const result = ref<SummarizeResponse | null>(null)
 const lastSubmittedUrl = ref('')
 const isDev = import.meta.dev
+
+const ERROR_MESSAGE_MAP: Record<string, string> = {
+  INVALID_INPUT: '入力が不足しています。URLを入力してください。',
+  INVALID_URL: 'URL形式が不正です。http/https のURLを入力してください。',
+  YOUTUBE_VIDEO_ID_NOT_FOUND: 'YouTube URLから動画IDを取得できませんでした。URLを確認してください。',
+  CONFIG_ERROR: 'サーバー設定エラーです。管理者に連絡してください。',
+  EMPTY_MODEL_RESPONSE: 'AIの応答が空でした。時間をおいて再試行してください。',
+  INVALID_MODEL_JSON: 'AI応答の解析に失敗しました。再試行してください。',
+  INVALID_MODEL_SCHEMA: 'AI応答の形式が不正でした。再試行してください。',
+  QUOTA_EXCEEDED: 'API利用上限に達しました。時間をおいて再試行してください。',
+  GEMINI_REQUEST_FAILED: 'AIリクエストに失敗しました。時間をおいて再試行してください。',
+}
 
 const urlValid = computed(() => {
   const value = url.value.trim()
@@ -103,6 +118,18 @@ function uiError(...args: unknown[]) {
   console.error(...args)
 }
 
+function resolveErrorMessage(error: any): string {
+  const code = error?.data?.error?.code as string | undefined
+  const apiMessage = error?.data?.error?.message as string | undefined
+  if (code && ERROR_MESSAGE_MAP[code])
+    return ERROR_MESSAGE_MAP[code]
+  if (apiMessage)
+    return apiMessage
+  if (error instanceof Error && error.message)
+    return error.message
+  return '通信エラーが発生しました。'
+}
+
 async function submit() {
   uiLog('submit clicked')
   const trimmedUrl = url.value.trim()
@@ -138,7 +165,7 @@ async function submit() {
     })
   }
   catch (error: any) {
-    const msg = error?.data?.error?.message || (error instanceof Error ? error.message : '通信エラーが発生しました。')
+    const msg = resolveErrorMessage(error)
     errorMessage.value = msg
     statusMessage.value = '要約の取得に失敗しました。'
     uiError('[ui] summarize request failed', msg, error)

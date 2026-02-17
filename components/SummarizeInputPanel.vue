@@ -6,7 +6,7 @@
       :value="modelValue"
       type="text"
       placeholder="https://example.com/article"
-      @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+      @input="onInput"
     >
 
     <p v-if="urlMessage" class="hint" :class="{ invalid: !urlValid }">
@@ -27,10 +27,15 @@ defineProps<{
   urlValid: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'submit'): void
 }>()
+
+function onInput(event: Event) {
+  const value = (event.target as HTMLInputElement | null)?.value || ''
+  emit('update:modelValue', value)
+}
 </script>
 
 <style scoped>
@@ -49,6 +54,7 @@ label {
 
 input {
   width: 100%;
+  box-sizing: border-box;
   padding: 10px;
   margin-bottom: 12px;
   border: 1px solid #ccc;
