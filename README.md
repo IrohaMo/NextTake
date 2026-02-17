@@ -80,3 +80,4 @@ https://next-take.vercel.app
 - UIを分割し、`app.vue` から入力パネル/結果パネルを `components/` へ分離。
 - UIのエラー文言を `error.code` ベースで統一表示するように変更。
 - Geminiモックモードを無効化し、`/api/summarize` は実際のGemini API呼び出しに戻した。
+- 画面全体のUIを再調整し、セクションを整理した読みやすいレイアウトへ更新。

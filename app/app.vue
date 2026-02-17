@@ -1,34 +1,41 @@
 <template>
-  <div class="container">
-    <h1>NextTake</h1>
-    <p class="caption">記事 or YouTube URLを入力して要約JSONを取得</p>
+  <div class="page">
+    <div class="container">
+      <header class="hero">
+        <p class="eyebrow">Catch up faster</p>
+        <h1>NextTake</h1>
+        <p class="caption">記事 or YouTube URLを入力して、要点と次の行動をすぐ確認</p>
+      </header>
 
-    <SummarizeInputPanel
-      v-model="url"
-      :pending="pending"
-      :url-message="urlMessage"
-      :url-valid="urlValid"
-      @submit="submit"
-    />
+      <SummarizeInputPanel
+        v-model="url"
+        :pending="pending"
+        :url-message="urlMessage"
+        :url-valid="urlValid"
+        @submit="submit"
+      />
 
-    <p v-if="statusMessage" class="status">
-      {{ statusMessage }}
-    </p>
+      <p v-if="statusMessage" class="status">
+        {{ statusMessage }}
+      </p>
 
-    <p v-if="errorMessage" class="error">
-      {{ errorMessage }}
-    </p>
-    <button
-      v-if="errorMessage && lastSubmittedUrl"
-      class="retry-btn"
-      type="button"
-      :disabled="pending"
-      @click="retryLastRequest"
-    >
-      再試行
-    </button>
+      <div v-if="errorMessage" class="error-wrap">
+        <p class="error">
+          {{ errorMessage }}
+        </p>
+        <button
+          v-if="lastSubmittedUrl"
+          class="retry-btn"
+          type="button"
+          :disabled="pending"
+          @click="retryLastRequest"
+        >
+          再試行
+        </button>
+      </div>
 
-    <SummarizeResultPanel v-if="result" :result="result" />
+      <SummarizeResultPanel v-if="result" :result="result" />
+    </div>
   </div>
 </template>
 
@@ -185,35 +192,70 @@ async function retryLastRequest() {
 </script>
 
 <style scoped>
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 90% -20%, #d8efe5 0%, transparent 65%),
+    radial-gradient(1000px 500px at -10% -10%, #f4dfcf 0%, transparent 60%),
+    #f8f7f4;
+}
+
 .container {
-  max-width: 760px;
-  margin: 40px auto;
-  padding: 0 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+  font-family: "Avenir Next", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+
+.hero {
+  margin-bottom: 12px;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #6e6a60;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .caption {
-  margin-top: -8px;
-  color: #555;
+  margin-top: 6px;
+  color: #5b5750;
 }
 
 .error {
-  margin-top: 12px;
+  margin: 0;
   color: #c62828;
 }
 
 .status {
   margin-top: 12px;
-  color: #333;
+  color: #2e493c;
+  background: #e6f4ee;
+  border: 1px solid #c6e4d8;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.error-wrap {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #fdecec;
+  border: 1px solid #f3c6c6;
+  padding: 10px 12px;
+  border-radius: 8px;
 }
 
 .retry-btn {
-  margin-top: 8px;
   padding: 8px 12px;
-  border: 1px solid #999;
+  border: 1px solid #b78f8f;
   border-radius: 6px;
-  background: #fff;
-  color: #333;
+  background: #fff7f7;
+  color: #5c2b2b;
   cursor: pointer;
 }
 
