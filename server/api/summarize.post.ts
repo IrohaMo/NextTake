@@ -9,7 +9,7 @@ type SummarizeRequest = {
 type SummarizeResponse = {
   key_points: string[]
   so_what: string
-  next_actions: Array<{ text: string; eta_min: number }>
+  next_actions: string[]
   open_questions: string[]
   source_info?: {
     source_type: 'youtube' | 'article' | 'pasted_text' | 'unknown'
@@ -244,90 +244,70 @@ function isValidSummarizeResponse(value: unknown): value is SummarizeResponse {
     return false
 
   const v = value as Record<string, unknown>
-  const nextActions = v.next_actions
-
-  const validNextActions = Array.isArray(nextActions) && nextActions.every((item) => {
-    if (!item || typeof item !== 'object')
-      return false
-
-    const row = item as Record<string, unknown>
-    return typeof row.text === 'string' && typeof row.eta_min === 'number' && Number.isInteger(row.eta_min)
-  })
 
   return (
     isStringArray(v.key_points)
     && typeof v.so_what === 'string'
-    && validNextActions
+    && isStringArray(v.next_actions)
     && isStringArray(v.open_questions)
   )
 }
 
 function buildPrompt(input: { url?: string, pastedText?: string }) {
-  const source = input.pastedText || ''
-  const sourceInfo = input.url ? `Source URL: ${input.url}` : 'Source URL: (none)'
+  const source = input.pastedText
+    ? `Pasted text:\n${input.pastedText}`
+    : `URL: ${input.url}`
 
   return `
 You must return ONLY valid JSON.
-No markdown. No explanation. Only JSON.
+No markdown.
+No explanation.
+No commentary.
+No code fences.
 
 Schema:
 {
   "key_points": string[],
   "so_what": string,
-  "next_actions": [
-    { "text": string, "eta_min": number },
-    { "text": string, "eta_min": number },
-    { "text": string, "eta_min": number }
-  ],
+  "next_actions": string[],
   "open_questions": string[]
 }
 
 Strict rules:
+
+General:
 - All strings must be written in Japanese.
-- key_points must include source-specific claims. Do not write general AI commentary.
-- Do NOT use abstract filler words such as:
-  「必要性」「課題」「複雑化」「動向」「重要」「影響」「議論」
-- so_what must describe why THIS article matters to the reader's real-world action.
-- next_actions must be concrete and executable within 30 minutes each.
-- next_actions must start with a specific verb.
-- Prohibited verbs: 「調査する」「検討する」「把握する」「考察する」「学習する」
-- If article lacks clarity, use open_questions instead of guessing.
-- Do not invent facts that are not explicitly present in the source text.
+- Do NOT refer to the source as 「この記事」「この動画」「本記事」「本動画」など。
+- Do NOT write meta comments.
+- Do NOT repeat the schema.
+
+key_points:
+- Extract article/video-specific claims only.
+- No abstract filler words such as:
+  「必要性」「課題」「複雑化」「重要」「動向」「影響」「議論」「可能性」
+- Each item must describe an observable fact, instruction, or claim.
+- Prefer concrete nouns, actions, or numbers if available.
+
+so_what:
+- Explain why this content matters in practical life.
+- Must describe a real-world effect or benefit.
+- No abstract general statements.
+
+next_actions:
+- Must be step-by-step executable instructions.
+- Each item must start with a concrete action verb.
+- No vague verbs such as:
+  「調査する」「検討する」「把握する」「考察する」「学習する」
+- Include concrete numbers if possible (e.g. 3本, 1周, 5分以内).
+- Do NOT say 「動画で紹介された方法」などの参照表現。
+- Each instruction must be executable immediately without re-reading the source.
+
+open_questions:
+- Only include meaningful unresolved uncertainties.
+- If information is unclear, place it here instead of guessing.
 
 Source:
-${sourceInfo}
 ${source}
-`.trim()
-}
-
-function buildYouTubePrompt(url: string): string {
-  return `
-You must return ONLY valid JSON.
-No markdown. No explanation. Only JSON.
-
-Schema:
-{
-  "key_points": string[],
-  "so_what": string,
-  "next_actions": [
-    { "text": string, "eta_min": number },
-    { "text": string, "eta_min": number },
-    { "text": string, "eta_min": number }
-  ],
-  "open_questions": string[]
-}
-
-Strict rules:
-- All strings must be written in Japanese.
-- Summarize the provided YouTube video itself (not external assumptions).
-- key_points must include video-specific claims.
-- so_what must explain why this video matters for real-world action.
-- next_actions must be concrete and executable within 30 minutes each.
-- next_actions must start with a specific verb.
-- If information is uncertain, include it in open_questions instead of guessing.
-
-YouTube URL:
-${url}
 `.trim()
 }
 
@@ -396,7 +376,7 @@ export default defineEventHandler(async (event) => {
               mimeType: 'video/*',
             },
           },
-          { text: buildYouTubePrompt(url!) },
+          { text: buildPrompt({ url: url! }) },
         ]
       : buildPrompt({ url, pastedText: sourceText })
 

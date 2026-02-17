@@ -45,7 +45,7 @@
       <h2>次アクション</h2>
       <ul>
         <li v-for="(action, idx) in result.next_actions" :key="`a-${idx}`">
-          {{ action.text }} ({{ action.eta_min }}分)
+          {{ action }}
         </li>
       </ul>
 
@@ -68,7 +68,7 @@
 type SummarizeResponse = {
   key_points: string[]
   so_what: string
-  next_actions: Array<{ text: string, eta_min: number }>
+  next_actions: string[]
   open_questions: string[]
   source_info?: {
     source_type: 'youtube' | 'article' | 'pasted_text' | 'unknown'

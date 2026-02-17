@@ -47,3 +47,4 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 - Python連携は廃止し、Node-only（watchページ経由）で字幕取得する構成に戻した。
 - `POST /api/summarize` は YouTube URL時に Gemini Video Understanding（`fileData.fileUri`）を使う方式へ切り替え。
 - 不要になった字幕テストUIと `GET /api/youtube-transcript` エンドポイントを削除。
+- 要約プロンプトを強化版へ更新し、`next_actions` から所要時間（`eta_min`）を削除して `string[]` 化。
