@@ -48,3 +48,5 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 - `POST /api/summarize` は YouTube URL時に Gemini Video Understanding（`fileData.fileUri`）を使う方式へ切り替え。
 - 不要になった字幕テストUIと `GET /api/youtube-transcript` エンドポイントを削除。
 - 要約プロンプトを強化版へ更新し、`next_actions` から所要時間（`eta_min`）を削除して `string[]` 化。
+- ログを本番向けに整理し、`info/warn` は開発時のみ、`error` は本番でも残す運用へ変更。
+- 入力UXを強化し、URL妥当性メッセージ・YouTube/記事判定表示・再試行ボタンを追加。

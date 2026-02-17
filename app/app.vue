@@ -12,6 +12,10 @@
         placeholder="https://example.com/article"
       >
 
+      <p v-if="urlMessage" class="hint" :class="{ invalid: !urlValid }">
+        {{ urlMessage }}
+      </p>
+
       <button type="submit" :disabled="pending">
         {{ pending ? '生成中...' : '要約する' }}
       </button>
@@ -24,6 +28,15 @@
     <p v-if="errorMessage" class="error">
       {{ errorMessage }}
     </p>
+    <button
+      v-if="errorMessage && lastSubmittedUrl"
+      class="retry-btn"
+      type="button"
+      :disabled="pending"
+      @click="retryLastRequest"
+    >
+      再試行
+    </button>
 
     <section v-if="result" class="panel">
       <p v-if="result.source_info" class="caption source-meta">
@@ -82,14 +95,57 @@ const pending = ref(false)
 const errorMessage = ref('')
 const statusMessage = ref('')
 const result = ref<SummarizeResponse | null>(null)
+const lastSubmittedUrl = ref('')
+const isDev = import.meta.dev
+
+const urlValid = computed(() => {
+  const value = url.value.trim()
+  if (!value)
+    return false
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  }
+  catch {
+    return false
+  }
+})
+
+const urlType = computed(() => {
+  if (!urlValid.value)
+    return null
+  const host = new URL(url.value.trim()).hostname.toLowerCase()
+  if (host.includes('youtube.com') || host.includes('youtu.be'))
+    return 'youtube'
+  return 'article'
+})
+
+const urlMessage = computed(() => {
+  const value = url.value.trim()
+  if (!value)
+    return ''
+  if (!urlValid.value)
+    return 'URL形式が不正です（http/https を入力してください）。'
+  if (urlType.value === 'youtube')
+    return 'YouTube URLとして認識しました。動画理解モードで要約します。'
+  return '記事URLとして認識しました。本文抽出モードで要約します。'
+})
 
 function uiLog(step: string, payload?: unknown) {
+  if (!isDev)
+    return
   const ts = new Date().toISOString()
   if (payload === undefined) {
     console.info(`[ui][${ts}] ${step}`)
     return
   }
   console.info(`[ui][${ts}] ${step}`, payload)
+}
+
+function uiError(...args: unknown[]) {
+  if (!isDev)
+    return
+  console.error(...args)
 }
 
 async function submit() {
@@ -104,6 +160,7 @@ async function submit() {
   }
 
   pending.value = true
+  lastSubmittedUrl.value = trimmedUrl
   statusMessage.value = 'リクエスト送信中...'
   errorMessage.value = ''
   result.value = null
@@ -129,12 +186,19 @@ async function submit() {
     const msg = error?.data?.error?.message || (error instanceof Error ? error.message : '通信エラーが発生しました。')
     errorMessage.value = msg
     statusMessage.value = '要約の取得に失敗しました。'
-    console.error('[ui] summarize request failed', msg, error)
+    uiError('[ui] summarize request failed', msg, error)
   }
   finally {
     pending.value = false
     uiLog('summarize request finished')
   }
+}
+
+async function retryLastRequest() {
+  if (!lastSubmittedUrl.value || pending.value)
+    return
+  url.value = lastSubmittedUrl.value
+  await submit()
 }
 </script>
 
@@ -198,6 +262,32 @@ button:disabled {
 .status {
   margin-top: 12px;
   color: #333;
+}
+
+.hint {
+  margin-top: -4px;
+  margin-bottom: 12px;
+  color: #2f5b2f;
+  font-size: 13px;
+}
+
+.hint.invalid {
+  color: #c62828;
+}
+
+.retry-btn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid #999;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.retry-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 pre {

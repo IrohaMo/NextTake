@@ -20,6 +20,21 @@ type SummarizeResponse = {
 
 const MAX_INPUT_CHARS = 12_000
 const FETCH_TIMEOUT_MS = 15_000
+const IS_DEV = process.env.NODE_ENV !== 'production'
+
+function logInfo(...args: unknown[]) {
+  if (IS_DEV)
+    console.info(...args)
+}
+
+function logWarn(...args: unknown[]) {
+  if (IS_DEV)
+    console.warn(...args)
+}
+
+function logError(...args: unknown[]) {
+  console.error(...args)
+}
 
 function isYouTubeUrl(value: string): boolean {
   try {
@@ -150,7 +165,7 @@ async function resolveSourceText(input: {
   if (isYouTubeUrl(input.url)) {
     const videoId = getYouTubeVideoId(input.url)
     if (!videoId) {
-      console.warn(`[summarize][${input.requestId}] youtube url detected but video id not found`)
+      logWarn(`[summarize][${input.requestId}] youtube url detected but video id not found`)
       return {
         sourceText: '',
         sourceLabel: 'youtube_transcript_error',
@@ -184,7 +199,7 @@ async function resolveSourceText(input: {
     })
 
     if (!response.ok) {
-      console.warn(`[summarize][${input.requestId}] source fetch failed with status ${response.status}`)
+      logWarn(`[summarize][${input.requestId}] source fetch failed with status ${response.status}`)
       return {
         sourceText: `URL: ${input.url}`,
         sourceLabel: 'url_only',
@@ -201,7 +216,7 @@ async function resolveSourceText(input: {
     const merged = cleanText(`${title ? `Title: ${title}\n` : ''}${body}`).slice(0, MAX_INPUT_CHARS)
 
     if (!merged) {
-      console.warn(`[summarize][${input.requestId}] source extraction empty`)
+      logWarn(`[summarize][${input.requestId}] source extraction empty`)
       return {
         sourceText: `URL: ${input.url}`,
         sourceLabel: 'url_only',
@@ -223,7 +238,7 @@ async function resolveSourceText(input: {
   }
   catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'unknown'
-    console.warn(`[summarize][${input.requestId}] source fetch error: ${msg}`)
+    logWarn(`[summarize][${input.requestId}] source fetch error: ${msg}`)
     return {
       sourceText: `URL: ${input.url}`,
       sourceLabel: 'url_only',
@@ -320,23 +335,23 @@ export default defineEventHandler(async (event) => {
     ? body.pasted_text.slice(0, MAX_INPUT_CHARS)
     : undefined
 
-  console.info(`[summarize][${requestId}] start`, {
+  logInfo(`[summarize][${requestId}] start`, {
     hasUrl: Boolean(url),
     pastedTextChars: pastedText?.length ?? 0,
   })
 
   if (!url && !pastedText) {
-    console.warn(`[summarize][${requestId}] invalid input: missing url/pasted_text`)
+    logWarn(`[summarize][${requestId}] invalid input: missing url/pasted_text`)
     return errorResponse(event, 400, 'INVALID_INPUT', 'Either "url" or "pasted_text" is required.')
   }
-  console.info(`[summarize][${requestId}] input validation passed`)
+  logInfo(`[summarize][${requestId}] input validation passed`)
 
   if (url && !isHttpUrl(url)) {
-    console.warn(`[summarize][${requestId}] invalid url format`)
+    logWarn(`[summarize][${requestId}] invalid url format`)
     return errorResponse(event, 400, 'INVALID_URL', 'URL must be http/https format.')
   }
   if (url) {
-    console.info(`[summarize][${requestId}] url format check passed`)
+    logInfo(`[summarize][${requestId}] url format check passed`)
   }
 
   const runtimeConfig = useRuntimeConfig(event)
@@ -344,30 +359,30 @@ export default defineEventHandler(async (event) => {
   const model = runtimeConfig.geminiModel as string | undefined
 
   if (!apiKey) {
-    console.error(`[summarize][${requestId}] missing GEMINI_API_KEY`)
+    logError(`[summarize][${requestId}] missing GEMINI_API_KEY`)
     return errorResponse(event, 500, 'CONFIG_ERROR', 'Missing GEMINI_API_KEY.')
   }
   if (!model) {
-    console.error(`[summarize][${requestId}] missing geminiModel`)
+    logError(`[summarize][${requestId}] missing geminiModel`)
     return errorResponse(event, 500, 'CONFIG_ERROR', 'Missing geminiModel in runtime config.')
   }
 
   try {
-    console.info(`[summarize][${requestId}] resolving source text`)
+    logInfo(`[summarize][${requestId}] resolving source text`)
     const { sourceText, sourceLabel, sourceInfo, sourceError } = await resolveSourceText({ requestId, url, pastedText })
-    console.info(`[summarize][${requestId}] source resolved`, {
+    logInfo(`[summarize][${requestId}] source resolved`, {
       sourceLabel,
       sourceChars: sourceText.length,
       sourceInfo,
     })
     if (sourceError) {
-      console.warn(`[summarize][${requestId}] source error`, sourceError.code)
+      logWarn(`[summarize][${requestId}] source error`, sourceError.code)
       return errorResponse(event, sourceError.status, sourceError.code, sourceError.message)
     }
 
     const ai = new GoogleGenAI({ apiKey })
     const isYoutubeInput = Boolean(url && isYouTubeUrl(url) && !pastedText)
-    console.info(`[summarize][${requestId}] calling gemini`, { model, isYoutubeInput })
+    logInfo(`[summarize][${requestId}] calling gemini`, { model, isYoutubeInput })
     const contents: any = isYoutubeInput
       ? [
           {
@@ -387,31 +402,31 @@ export default defineEventHandler(async (event) => {
 		temperature: 0.2,
 	  }
     })
-    console.info(`[summarize][${requestId}] gemini response received`)
+    logInfo(`[summarize][${requestId}] gemini response received`)
 
     const rawText = String(result.text || '').trim()
     if (!rawText) {
-      console.error(`[summarize][${requestId}] empty model response`)
+      logError(`[summarize][${requestId}] empty model response`)
       return errorResponse(event, 502, 'EMPTY_MODEL_RESPONSE', 'Model returned an empty response.')
     }
 
     let parsed: unknown
     try {
-      console.info(`[summarize][${requestId}] parsing model json`)
+      logInfo(`[summarize][${requestId}] parsing model json`)
       parsed = JSON.parse(stripCodeFence(rawText))
     }
     catch {
-      console.error(`[summarize][${requestId}] invalid model json`)
+      logError(`[summarize][${requestId}] invalid model json`)
       return errorResponse(event, 502, 'INVALID_MODEL_JSON', 'Model response was not valid JSON.')
     }
 
-    console.info(`[summarize][${requestId}] validating response schema`)
+    logInfo(`[summarize][${requestId}] validating response schema`)
     if (!isValidSummarizeResponse(parsed)) {
-      console.error(`[summarize][${requestId}] invalid model schema`)
+      logError(`[summarize][${requestId}] invalid model schema`)
       return errorResponse(event, 502, 'INVALID_MODEL_SCHEMA', 'Model response did not match expected schema.')
     }
 
-    console.info(`[summarize][${requestId}] success in ${Date.now() - startedAt}ms`)
+    logInfo(`[summarize][${requestId}] success in ${Date.now() - startedAt}ms`)
     return {
       ...parsed,
       source_info: sourceInfo,
@@ -421,11 +436,11 @@ export default defineEventHandler(async (event) => {
     const maybeError = error as { status?: number, message?: string }
 
     if (maybeError?.status === 429) {
-      console.warn(`[summarize][${requestId}] quota exceeded in ${Date.now() - startedAt}ms`)
+      logWarn(`[summarize][${requestId}] quota exceeded in ${Date.now() - startedAt}ms`)
       return errorResponse(event, 429, 'QUOTA_EXCEEDED', 'Gemini quota exceeded. Please check plan/billing and retry.')
     }
 
-    console.error(`[summarize][${requestId}] failed in ${Date.now() - startedAt}ms`, maybeError?.message)
+    logError(`[summarize][${requestId}] failed in ${Date.now() - startedAt}ms`, maybeError?.message)
     return errorResponse(
       event,
       500,
