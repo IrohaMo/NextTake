@@ -6,35 +6,31 @@
       <span v-if="result.source_info.language_code"> / lang: {{ result.source_info.language_code }}</span>
     </p>
 
-    <h2>要点</h2>
-    <ul>
-      <li v-for="(point, idx) in result.key_points" :key="`k-${idx}`">
+    <h2>Summary</h2>
+    <div class="item-list">
+      <div v-for="(point, idx) in result.key_points" :key="`k-${idx}`" class="item-card">
         {{ point }}
-      </li>
-    </ul>
+      </div>
+    </div>
 
     <h2>So what</h2>
     <p>{{ result.so_what }}</p>
 
-    <h2>次アクション</h2>
-    <ul>
-      <li v-for="(action, idx) in result.next_actions" :key="`a-${idx}`">
+    <h2>Next Take</h2>
+    <div class="item-list">
+      <div v-for="(action, idx) in result.next_actions" :key="`a-${idx}`" class="item-card">
         {{ action }}
-      </li>
-    </ul>
+      </div>
+    </div>
 
     <h2>Open Questions</h2>
-    <ul>
-      <li v-for="(q, idx) in result.open_questions" :key="`q-${idx}`">
+    <div class="item-list">
+      <div v-for="(q, idx) in result.open_questions" :key="`q-${idx}`" class="item-card">
         {{ q }}
-      </li>
-    </ul>
+      </div>
+    </div>
   </section>
 
-  <section class="panel">
-    <h2>Raw JSON</h2>
-    <pre>{{ JSON.stringify(result, null, 2) }}</pre>
-  </section>
 </template>
 
 <script setup lang="ts">
@@ -70,11 +66,16 @@ defineProps<{
   margin-top: 0;
 }
 
-pre {
-  background: #f6f6f6;
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 12px;
+.item-list {
+  display: grid;
+  gap: 8px;
 }
+
+.item-card {
+  border: 1px solid #e1e1e1;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
 </style>

@@ -5,5 +5,6 @@ export default defineNuxtConfig({
   runtimeConfig: {
     geminiApiKey: process.env.GEMINI_API_KEY,
     geminiModel: 'gemini-2.5-flash-lite',
+    geminiMockMode: false,
   },
 })

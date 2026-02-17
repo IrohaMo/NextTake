@@ -2,6 +2,33 @@
 
 URLまたはテキスト入力から、要点・So what・次アクションをJSONで返すMVP（Nuxt 3想定）。
 
+## アプリ概要
+
+NextTake は、記事URLまたはYouTube URLを入力すると内容を要約し、以下を日本語で返すWebアプリです。
+
+- `key_points`（要点）
+- `so_what`（なぜ重要か）
+- `next_actions`（次に取る行動）
+- `open_questions`（未解決の論点）
+
+## 使い方
+
+1. アプリを起動する
+2. URL入力欄に記事またはYouTubeのURLを入力する
+3. 「要約する」を押す
+4. 結果（Summary / So what / Next Take / Open Questions）を確認する
+
+## 使用技術
+
+- Nuxt 3
+- TypeScript
+- Gemini API（`@google/genai`）
+- Nitro Server API（`POST /api/summarize`）
+
+## 公開URL
+
+未公開（ローカル運用）
+
 ## 仕様ドキュメント
 
 - `/Users/shu/Developer/NextTake/TECH_SPEC.md`
@@ -52,3 +79,4 @@ URLまたはテキスト入力から、要点・So what・次アクションをJ
 - 入力UXを強化し、URL妥当性メッセージ・YouTube/記事判定表示・再試行ボタンを追加。
 - UIを分割し、`app.vue` から入力パネル/結果パネルを `components/` へ分離。
 - UIのエラー文言を `error.code` ベースで統一表示するように変更。
+- Geminiモックモードを無効化し、`/api/summarize` は実際のGemini API呼び出しに戻した。
