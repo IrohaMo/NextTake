@@ -39,7 +39,7 @@ https://next-take.vercel.app
 - フレームワーク: Nuxt 3 + TypeScript
 - API: `POST /api/summarize`
 - モデル基盤: Gemini API（`GEMINI_API_KEY`）
-- 使用モデル: `gemini-2.5-flash-lite`（`/Users/shu/Developer/NextTake/nuxt.config.ts` の `runtimeConfig.geminiModel` に固定）
+- 使用モデル: `gemini-2.5-flash`（`/Users/shu/Developer/NextTake/nuxt.config.ts` の `runtimeConfig.geminiModel` に固定）
 - 出力: 固定JSONスキーマ（`key_points`, `so_what`, `next_actions`, `open_questions`）
 
 ## 実装Log
@@ -54,7 +54,7 @@ https://next-take.vercel.app
 - `.env.example` を使わない運用に合わせ、モデル定義を `nuxt.config.ts` に固定。
 - 最小UIを実装（URL入力、`/api/summarize` 呼び出し、要約結果とRaw JSON表示）。
 - API/フロントにログを追加し、待機中UIが確実に表示されるようフォーム送信処理を修正。
-- 使用モデルを `gemini-2.5-flash-lite` に戻した。
+- 使用モデルを `gemini-2.5-flash` に変更。
 - 要約精度改善として、URL先のHTML本文抽出を追加（本文手動入力UIは廃止）。
 - YouTube URLの場合は字幕取得を試行し、取得した字幕テキストを要約入力に使用するように拡張。
 - YouTube字幕を取得できない場合はフォールバックせず、明示エラー（422）を返す挙動に変更。

@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   runtimeConfig: {
     geminiApiKey: process.env.GEMINI_API_KEY,
-    geminiModel: 'gemini-2.5-flash-lite',
+    geminiModel: 'gemini-2.5-flash',
     geminiMockMode: false,
   },
 })
